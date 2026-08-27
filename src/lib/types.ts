@@ -39,6 +39,8 @@ export interface Config {
   spaceId?: string;
   spaceName?: string;
   seeded?: boolean;
+  /** Fallback for "who paid" when the host does not reveal the login. */
+  displayName?: string;
 }
 
 /** category → monthly budget in minor units. */

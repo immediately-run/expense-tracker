@@ -15,6 +15,7 @@ import {
   saveConfig,
   saveMembers,
   saveTx,
+  saveTxBatch,
   storeKey,
   txDir,
 } from '../lib/ledger';
@@ -55,11 +56,12 @@ const errMessage = (e: unknown): string =>
  */
 export function useLedger() {
   const auth = useAuth();
-  const login = auth.user?.login || 'me';
-
   const [priv, setPriv] = useState<Store | null>(null);
   const [store, setStore] = useState<Store | null>(null);
   const [config, setConfig] = useState<Config>(DEFAULT_CONFIG);
+  // Stage apps get `user: null` from the host (identity is elevated), so the
+  // private "Your name" setting is the attribution fallback before plain "me".
+  const login = auth.user?.login || config.displayName?.trim() || 'me';
   const [categories, setCategoriesState] = useState<string[]>(DEFAULT_CATEGORIES);
   const [members, setMembersState] = useState<string[]>([]);
   const [spaceMembers, setSpaceMembers] = useState<{ spaceId: string; logins: string[] }>({ spaceId: '', logins: [] });
@@ -143,9 +145,11 @@ export function useLedger() {
 
   // First run of a private store: seed sample data once auth has settled, so the
   // rows are attributed to the real login (there is no host under `vite dev`, so
-  // fall back after a moment). The seed is idempotent — `seeded` is written first
-  // and the ids are deterministic — so it is never cancelled, only never started
-  // twice (StrictMode doubles the effect).
+  // fall back after a moment). The seed is single-flight (StrictMode doubles the
+  // effect) and idempotent: ids are deterministic, so a retry overwrites the same
+  // files, and `seeded` is recorded only once every row is on disk — a boot that
+  // loses the host's concurrent-create race (observed 2026-08-27) tries again
+  // next time instead of leaving a half-seeded ledger forever.
   const seedStarted = useRef(false);
   useEffect(() => {
     if (!ready || !priv || store !== priv || config.seeded) return;
@@ -153,21 +157,22 @@ export function useLedger() {
       if (seedStarted.current) return;
       seedStarted.current = true;
       const next: Config = { ...config, seeded: true };
-      setConfig(next);
       try {
-        await saveConfig(priv, next);
         const existing = await loadMonth(priv, currentMonth());
-        if (existing.length > 0) return;
-        const rows = makeSampleTransactions(next.currency, auth.user?.login || 'me');
-        await Promise.all(rows.map((t) => saveTx(priv, t)));
-        setCache({});
+        if (!existing.some((t) => !t.sample)) {
+          await saveTxBatch(priv, makeSampleTransactions(next.currency, login));
+          setCache({});
+        }
+        setConfig(next);
+        await saveConfig(priv, next);
       } catch (e) {
+        seedStarted.current = false;
         setNotice(`Sample data failed: ${errMessage(e)}`);
       }
     };
     const timer = setTimeout(() => void seed(), auth.status === 'unknown' ? 1500 : 0);
     return () => clearTimeout(timer);
-  }, [ready, priv, store, config, auth.status, auth.user]);
+  }, [ready, priv, store, config, auth.status, login]);
 
   // Load the visible month whenever it (or the store) changes.
   useEffect(() => {
@@ -317,6 +322,17 @@ export function useLedger() {
     [priv, config],
   );
 
+  const setDisplayName = useCallback(
+    async (name: string) => {
+      if (!priv) return;
+      const next = { ...config, displayName: name.trim() || undefined };
+      if (!next.displayName) delete next.displayName;
+      setConfig(next);
+      await saveConfig(priv, next).catch((e) => setNotice(errMessage(e)));
+    },
+    [priv, config],
+  );
+
   const setCategories = useCallback(
     async (cats: string[]) => {
       if (!store) return;
@@ -439,7 +455,7 @@ export function useLedger() {
     if (!store) return;
     await guard('Adding sample data', async () => {
       const rows = makeSampleTransactions(currency, login);
-      await Promise.all(rows.map((t) => saveTx(store, t)));
+      await saveTxBatch(store, rows);
       setCache({});
       setNotice(`Added ${rows.length} sample transactions.`);
     });
@@ -452,6 +468,8 @@ export function useLedger() {
     dismissNotice: () => setNotice(null),
     busy,
     login,
+    displayName: config.displayName ?? '',
+    hasHostLogin: !!auth.user?.login,
     authStatus: auth.status,
     store,
     mode,
@@ -473,6 +491,7 @@ export function useLedger() {
     updateTx,
     removeTx,
     setCurrency,
+    setDisplayName,
     setCategories,
     setMembers,
     setBudget,

@@ -16,6 +16,7 @@ function SettingsDrawer({ ledger, onClose }: Props) {
   const [newCat, setNewCat] = useState('');
   const [newMember, setNewMember] = useState('');
   const [newName, setNewName] = useState('');
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
   const [budgetDraft, setBudgetDraft] = useState<Record<string, string>>({});
 
   const budgetValue = (c: string) =>
@@ -86,6 +87,27 @@ function SettingsDrawer({ ledger, onClose }: Props) {
             </>
           )}
         </section>
+
+        {!ledger.hasHostLogin && (
+          <section>
+            <h3 className="sub">Your name</h3>
+            <p className="hint">Used as “who paid” on your expenses and on the Balances tab. Pick the same name your household knows you by.</p>
+            <input
+              className="input"
+              placeholder="me"
+              aria-label="Your name"
+              value={nameDraft ?? ledger.displayName}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={() => {
+                if (nameDraft !== null && nameDraft.trim() !== ledger.displayName) void ledger.setDisplayName(nameDraft);
+                setNameDraft(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+            />
+          </section>
+        )}
 
         <section>
           <h3 className="sub">Currency</h3>

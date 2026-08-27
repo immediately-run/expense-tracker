@@ -6,7 +6,7 @@
 //   <private>/budgets.json             personal budgets, keyed per store
 import { DEFAULT_CATEGORIES } from '../data/categories';
 import { DEFAULT_CURRENCY } from '../data/currencies';
-import { listFiles, readJson, removeFile, writeJson } from './store';
+import { ensureDir, listFiles, readJson, removeFile, writeJson } from './store';
 import type { Store } from './store';
 import type {
   Budgets,
@@ -68,6 +68,13 @@ export async function listMonths(store: Store): Promise<string[]> {
 
 export async function saveTx(store: Store, tx: Transaction): Promise<void> {
   await writeJson(txPath(store, tx), tx);
+}
+
+/** Save many rows at once (seeding). The month directories are created first,
+ *  one at a time, so 25 concurrent creates never race their own `mkdir`. */
+export async function saveTxBatch(store: Store, rows: Transaction[]): Promise<void> {
+  for (const ym of new Set(rows.map((t) => t.date.slice(0, 7)))) await ensureDir(txDir(store, ym));
+  await Promise.all(rows.map((t) => saveTx(store, t)));
 }
 
 export async function deleteTx(store: Store, tx: Pick<Transaction, 'id' | 'date'>): Promise<void> {

@@ -131,8 +131,22 @@ export async function readJson<T>(path: string, fallback: T): Promise<T> {
 
 export async function writeJson(path: string, value: unknown): Promise<void> {
   const dir = path.slice(0, path.lastIndexOf('/'));
-  if (dir) await ensureDir(dir);
-  await fs.promises.writeFile(path, await padToExistingSize(path, JSON.stringify(value, null, 2)), 'utf8');
+  const text = JSON.stringify(value, null, 2);
+  const attempt = async () => {
+    if (dir) await ensureDir(dir);
+    await fs.promises.writeFile(path, await padToExistingSize(path, text), 'utf8');
+  };
+  try {
+    await attempt();
+  } catch (e) {
+    // Concurrent creates race on the host port: the loser of two creates of the
+    // same NEW file gets EEXIST, and a create that overlaps its directory's own
+    // recursive mkdir gets ENOENT (both observed 2026-08-27 seeding 25 rows at
+    // once). The directory/file exists now, so one retry is a plain overwrite.
+    const code = (e as { code?: string }).code;
+    if (code !== 'EEXIST' && code !== 'ENOENT') throw e;
+    await attempt();
+  }
 }
 
 export async function readText(path: string): Promise<string | null> {
