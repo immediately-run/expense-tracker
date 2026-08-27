@@ -1,4 +1,4 @@
-# Working in this repo
+# Working in this repo — expense-tracker
 
 This is an **immediately.run app**: React + TypeScript that loads from GitHub and
 transpiles in the browser (no server, no build step at runtime). Keep the rules
