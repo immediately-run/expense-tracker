@@ -179,7 +179,7 @@ export function useLedger() {
     if (store && cache[month] === undefined) void reloadMonth(store, month);
   }, [store, month, cache, reloadMonth]);
 
-  // R3-901: ONE recursive watch on tx/ replaces the per-month poll — the relay
+  // R3-901: one recursive watch on tx/ replaces the per-month poll — the relay
   // reports the changed path; the visible month reloads (idempotent).
   useEffect(() => {
     if (!store || mode !== 'shared') return;
