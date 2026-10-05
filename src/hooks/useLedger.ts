@@ -17,7 +17,7 @@ import {
   saveTx,
   saveTxBatch,
   storeKey,
-  txDir,
+  txRoot,
 } from '../lib/ledger';
 import { currentMonth, lastMonths, monthKey } from '../lib/dates';
 import { makeSampleTransactions } from '../lib/seed';
@@ -27,7 +27,7 @@ import {
   openPrivateStore,
   openRememberedSpace,
   pickSharedStore,
-  pollDir,
+  watchDir,
 } from '../lib/store';
 import type { Store } from '../lib/store';
 import type { Budgets, Config, Transaction } from '../lib/types';
@@ -179,10 +179,11 @@ export function useLedger() {
     if (store && cache[month] === undefined) void reloadMonth(store, month);
   }, [store, month, cache, reloadMonth]);
 
-  // Shared spaces get no remote watch events: poll the month directory.
+  // R3-901: ONE recursive watch on tx/ replaces the per-month poll — the relay
+  // reports the changed path; the visible month reloads (idempotent).
   useEffect(() => {
     if (!store || mode !== 'shared') return;
-    const stop = pollDir(txDir(store, month), () => void reloadMonth(store, month), 3000);
+    const stop = watchDir(txRoot(store), () => void reloadMonth(store, month));
     return stop;
   }, [store, mode, month, reloadMonth]);
 
